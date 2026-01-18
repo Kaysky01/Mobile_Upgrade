@@ -5,9 +5,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  // BASE URL API (SUDAH BENAR)
   static const String baseUrl = 'http://192.168.100.24:8000/api/v1';
 
-  // --- LOGIN EMAIL ---
+  // KEY STORAGE (BIAR KONSISTEN)
+  static const String _tokenKey = 'auth_token';
+  static const String _loginMethodKey = 'login_method';
+  static const String _userNameKey = 'user_name';
+  static const String _userEmailKey = 'user_email';
+
+  // ================= LOGIN EMAIL =================
   Future<bool> loginWithEmail({
     required String email,
     required String password,
@@ -15,7 +23,7 @@ class AuthService {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
-        headers: {
+        headers: const {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
@@ -25,32 +33,39 @@ class AuthService {
         }),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        final String? token = responseData['data']['token'];
-        final Map<String, dynamic>? user = responseData['data']['user'];
-
-        if (token != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', token);
-          // TAMBAHKAN INI agar Dashboard tahu ini login manual
-          await prefs.setString('login_method', 'email'); 
-          
-          if (user != null) {
-            await prefs.setString('user_name', user['name'] ?? '');
-            await prefs.setString('user_email', user['email'] ?? '');
-          }
-          return true;
-        }
+      if (response.statusCode != 200) {
+        print('LOGIN FAILED: ${response.body}');
+        return false;
       }
-      return false;
+
+      final Map<String, dynamic> json = jsonDecode(response.body);
+      final String? token = json['data']?['token'];
+      final Map<String, dynamic>? user = json['data']?['user'];
+
+      if (token == null) {
+        print('TOKEN NULL DARI API');
+        return false;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // 🔑 SIMPAN TOKEN (INI YANG PALING PENTING)
+      await prefs.setString(_tokenKey, token);
+      await prefs.setString(_loginMethodKey, 'email');
+
+      if (user != null) {
+        await prefs.setString(_userNameKey, user['name'] ?? '');
+        await prefs.setString(_userEmailKey, user['email'] ?? '');
+      }
+
+      return true;
     } catch (e) {
-      print('LOGIN ERROR: $e'); 
+      print('LOGIN ERROR: $e');
       return false;
     }
   }
 
-  // --- LOGIN GOOGLE ---
+  // ================= LOGIN GOOGLE =================
   Future<bool> loginWithGoogle() async {
     try {
       final googleUser = await _googleSignIn.signIn();
@@ -58,7 +73,7 @@ class AuthService {
 
       final response = await http.post(
         Uri.parse('$baseUrl/auth/google'),
-        headers: {
+        headers: const {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
@@ -70,50 +85,58 @@ class AuthService {
         }),
       );
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = jsonDecode(response.body);
-        final String? token = responseData['data'] != null 
-            ? responseData['data']['token'] 
-            : responseData['token'];
-
-        if (token != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', token);
-          // TAMBAHKAN INI agar Dashboard tahu ini login Google
-          await prefs.setString('login_method', 'google'); 
-          
-          // Simpan info dasar google untuk profil
-          await prefs.setString('user_name', googleUser.displayName ?? '');
-          await prefs.setString('user_email', googleUser.email);
-          return true;
-        }
+      if (response.statusCode != 200) {
+        print('GOOGLE LOGIN FAILED: ${response.body}');
+        return false;
       }
-      return false;
+
+      final Map<String, dynamic> json = jsonDecode(response.body);
+      final String? token = json['data']?['token'];
+
+      if (token == null) {
+        print('TOKEN GOOGLE NULL');
+        return false;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(_tokenKey, token);
+      await prefs.setString(_loginMethodKey, 'google');
+      await prefs.setString(_userNameKey, googleUser.displayName ?? '');
+      await prefs.setString(_userEmailKey, googleUser.email);
+
+      return true;
     } catch (e) {
       print('GOOGLE AUTH ERROR: $e');
       return false;
     }
   }
 
-  // --- HELPER FUNCTIONS ---
+  // ================= HELPER =================
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    return prefs.getString(_tokenKey);
   }
 
   Future<bool> isLoggedIn() async {
     final token = await getToken();
-    return token != null;
+    return token != null && token.isNotEmpty;
   }
 
+  Future<String?> getLoginMethod() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_loginMethodKey);
+  }
+
+  // ================= LOGOUT =================
   Future<void> logout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('auth_token');
-      await prefs.remove('user_name');
-      await prefs.remove('user_email');
-      await prefs.remove('login_method'); // Hapus juga metodenya
-      
+      await prefs.remove(_tokenKey);
+      await prefs.remove(_loginMethodKey);
+      await prefs.remove(_userNameKey);
+      await prefs.remove(_userEmailKey);
+
       if (await _googleSignIn.isSignedIn()) {
         await _googleSignIn.signOut();
       }

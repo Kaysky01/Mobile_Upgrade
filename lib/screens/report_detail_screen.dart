@@ -5,14 +5,47 @@ class ReportDetailScreen extends StatelessWidget {
 
   const ReportDetailScreen({super.key, required this.report});
 
+  // Helper untuk mengambil respons admin dengan aman
+  String? _getAdminResponse() {
+    // Cek berbagai kemungkinan key dari backend
+    if (report['admin_response'] != null &&
+        report['admin_response'].toString().isNotEmpty) {
+      return report['admin_response'].toString();
+    }
+    // Jika status ditolak, cek alasan penolakan
+    if (report['rejection_reason'] != null &&
+        report['rejection_reason'].toString().isNotEmpty) {
+      return report['rejection_reason'].toString();
+    }
+    // Jika ada key 'note' atau 'message' dari backend
+    if (report['note'] != null && report['note'].toString().isNotEmpty) {
+      return report['note'].toString();
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final status = report['status'] as String;
+    final adminResponse = _getAdminResponse();
+    
+    // Ambil status dan pastikan string (handle null)
+    final statusRaw = report['status']?.toString() ?? 'Pending';
+    // Normalisasi status (kapitalisasi huruf pertama)
+    final status = statusRaw.isNotEmpty 
+        ? '${statusRaw[0].toUpperCase()}${statusRaw.substring(1)}' 
+        : statusRaw;
+
     Color statusColor;
     IconData statusIcon;
-    
+
+    // UPDATE: Menambahkan case 'Selesai'
     switch (status) {
       case 'Disetujui':
+   // Tambahkan ini agar Selesai warnanya hijau
+        statusColor = const Color.fromARGB(255, 43, 202, 255);
+        statusIcon = Icons.check_circle;
+        break;
+      case 'Selesai': // Tambahkan ini agar Selesai warnanya hijau
         statusColor = const Color(0xFF66BB6A);
         statusIcon = Icons.check_circle;
         break;
@@ -34,27 +67,29 @@ class ReportDetailScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
+            // --- HEADER (FIX: Menambahkan Tombol Menu) ---
             Padding(
               padding: const EdgeInsets.all(20),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween, // Agar tombol ke pojok
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
                     onPressed: () => Navigator.pop(context),
                   ),
-                  const Expanded(
-                    child: Text(
-                      'Detail Laporan',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
+                  const Text(
+                    'Detail Laporan',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 48), // Placeholder untuk menjaga keseimbangan layout
+                  // FIX: Tombol Opsi Ditambahkan Disini
+                  IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white),
+                    onPressed: () => _showOptionsMenu(context),
+                  ),
                 ],
               ),
             ),
@@ -62,6 +97,7 @@ class ReportDetailScreen extends StatelessWidget {
             // Content
             Expanded(
               child: Container(
+                width: double.infinity,
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.only(
@@ -74,7 +110,7 @@ class ReportDetailScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Status Badge dengan Icon - FIX WARNA
+                      // Status Badge
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
@@ -101,7 +137,7 @@ class ReportDetailScreen extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      // ID Laporan - FIX WARNA
+                      // ID Laporan
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
@@ -110,7 +146,7 @@ class ReportDetailScreen extends StatelessWidget {
                           border: Border.all(color: Colors.grey[300]!, width: 1),
                         ),
                         child: Text(
-                          'ID: #${report['id'].toString().padLeft(4, '0')}',
+                          'ID: #${(report['id'] ?? '0000').toString().padLeft(4, '0')}',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey[800],
@@ -124,7 +160,7 @@ class ReportDetailScreen extends StatelessWidget {
 
                       // Title
                       Text(
-                        report['title'] as String,
+                        report['title']?.toString() ?? 'Tanpa Judul',
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -135,21 +171,22 @@ class ReportDetailScreen extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      // Info Cards - FIX WARNA
+                      // Info Cards
                       _buildInfoCard(
                         icon: Icons.category,
                         label: 'Kategori',
-                        value: report['category'] as String,
+                        value: report['category']?.toString() ?? '-',
                         color: const Color(0xFF1453A3),
                       ),
                       const SizedBox(height: 12),
                       _buildInfoCard(
                         icon: Icons.calendar_today,
                         label: 'Tanggal Laporan',
-                        value: report['date'] as String,
+                        value: report['date']?.toString() ?? '-',
                         color: const Color(0xFF9575CD),
                       ),
-                      if (report['imageCount'] > 0) ...[
+                      // Cek null safety untuk imageCount
+                      if ((report['imageCount'] ?? 0) > 0) ...[
                         const SizedBox(height: 12),
                         _buildInfoCard(
                           icon: Icons.attach_file,
@@ -170,9 +207,7 @@ class ReportDetailScreen extends StatelessWidget {
                           color: Colors.black87,
                         ),
                       ),
-
                       const SizedBox(height: 12),
-
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
@@ -182,7 +217,7 @@ class ReportDetailScreen extends StatelessWidget {
                           border: Border.all(color: Colors.grey[200]!, width: 1.5),
                         ),
                         child: Text(
-                          report['description'] as String,
+                          report['description']?.toString() ?? 'Tidak ada deskripsi',
                           style: TextStyle(
                             fontSize: 15,
                             color: Colors.grey[800],
@@ -193,7 +228,7 @@ class ReportDetailScreen extends StatelessWidget {
 
                       const SizedBox(height: 24),
 
-                      // Timeline/Status Info - FIX WARNA
+                      // Status Info Box
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
@@ -238,8 +273,8 @@ class ReportDetailScreen extends StatelessWidget {
                         ),
                       ),
 
-                      // Tambahan: Rincian Pelanggaran (jika sudah diproses)
-                      if (status == 'Diproses' || status == 'Disetujui') ...[
+                      // FIX: Menambahkan kondisi 'Selesai' agar rincian muncul
+                      if (status == 'Diproses' || status == 'Disetujui' || status == 'Selesai') ...[
                         const SizedBox(height: 24),
                         Container(
                           padding: const EdgeInsets.all(20),
@@ -268,49 +303,48 @@ class ReportDetailScreen extends StatelessWidget {
                               const SizedBox(height: 16),
                               _buildProcessDetailRow('Reviewer', 'Timdis'),
                               const SizedBox(height: 10),
-                              _buildProcessDetailRow('Tanggal Review', '15 Januari 2025'),
-                              const SizedBox(height: 10),
-                              _buildProcessDetailRow('Tingkat Pelanggaran', 'Sedang'),
-                              const SizedBox(height: 10),
-                              _buildProcessDetailRow('Tindak Lanjut', 'Peringatan Tertulis + Pembinaan'),
+                              // Gunakan data real jika ada, jika tidak dummy
+                              _buildProcessDetailRow('Tingkat', report['level'] ?? 'Sedang'),
                               const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Catatan Reviewer:',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.grey[700],
+                              // Tampilkan pesan admin disini juga jika ada
+                              if (adminResponse != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Catatan Reviewer:',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.grey[700],
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Bukti yang dilampirkan cukup valid. Pelanggaran termasuk dalam kategori sedang. Mahasiswa akan diberikan surat peringatan dan wajib mengikuti program pembinaan akademik.',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey[800],
-                                        height: 1.5,
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        adminResponse,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey[800],
+                                          height: 1.5,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
+                              ]
                             ],
                           ),
                         ),
                       ],
 
-                      // Balasan Admin dari Web
-                      if (report['admin_response'] != null && 
-                          report['admin_response'].toString().isNotEmpty) ...[
+                      // Balasan Admin Section (Eksplisit)
+                      if (adminResponse != null) ...[
                         const SizedBox(height: 24),
                         Container(
                           padding: const EdgeInsets.all(20),
@@ -325,7 +359,7 @@ class ReportDetailScreen extends StatelessWidget {
                             ),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: const Color(0xFF1453A3).withOpacity(0.3), 
+                              color: const Color(0xFF1453A3).withOpacity(0.3),
                               width: 1.5
                             ),
                           ),
@@ -341,8 +375,8 @@ class ReportDetailScreen extends StatelessWidget {
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: const Icon(
-                                      Icons.admin_panel_settings, 
-                                      color: Color(0xFF1453A3), 
+                                      Icons.admin_panel_settings,
+                                      color: Color(0xFF1453A3),
                                       size: 24
                                     ),
                                   ),
@@ -373,29 +407,18 @@ class ReportDetailScreen extends StatelessWidget {
                                   ),
                                   if (report['response_date'] != null)
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, 
-                                        vertical: 6
-                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: Colors.grey[300]!, 
-                                          width: 1
-                                        ),
+                                        border: Border.all(color: Colors.grey[300]!, width: 1),
                                       ),
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(
-                                            Icons.schedule, 
-                                            size: 14, 
-                                            color: Colors.grey[600]
-                                          ),
+                                          Icon(Icons.schedule, size: 14, color: Colors.grey[600]),
                                           const SizedBox(width: 4),
                                           Text(
-                                            report['response_date'] as String,
+                                            report['response_date'].toString(),
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: Colors.grey[700],
@@ -423,7 +446,7 @@ class ReportDetailScreen extends StatelessWidget {
                                   ],
                                 ),
                                 child: Text(
-                                  report['admin_response'] as String,
+                                  adminResponse,
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.grey[800],
@@ -435,6 +458,8 @@ class ReportDetailScreen extends StatelessWidget {
                           ),
                         ),
                       ],
+                      // Tambahan padding bawah agar tidak mentok
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
@@ -445,6 +470,9 @@ class ReportDetailScreen extends StatelessWidget {
       ),
     );
   }
+
+  // Widget Helper (Build Info Card, Detail Row) Tetap Sama...
+  // Tapi saya sertakan agar full code bisa copy paste tanpa error
 
   Widget _buildInfoCard({
     required IconData icon,
@@ -537,8 +565,10 @@ class ReportDetailScreen extends StatelessWidget {
 
   String _getStatusMessage(String status) {
     switch (status) {
-      case 'Disetujui':
-        return 'Laporan Anda telah disetujui oleh tim verifikasi. Tindak lanjut akan dilakukan sesuai dengan prosedur yang berlaku.';
+      case 'Selesai': // Pesan khusus untuk status Selesai
+        return 'Laporan Anda telah selesai diproses dan ditindaklanjuti oleh tim kami. Terima kasih atas kontribusi Anda dalam menjaga lingkungan yang lebih baik.';
+      case 'Disetujui': // Handle message untuk Selesai
+        return 'Laporan Anda telah disetujui dan diselesaikan. Terima kasih atas partisipasi Anda dalam menjaga integritas.';
       case 'Diproses':
         return 'Laporan Anda sedang dalam tahap verifikasi. Tim kami akan segera menghubungi Anda jika diperlukan informasi tambahan.';
       case 'Ditolak':
@@ -611,8 +641,8 @@ class ReportDetailScreen extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
+              Navigator.pop(context); // Tutup Dialog
+              Navigator.pop(context); // Kembali ke layar sebelumnya
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Laporan berhasil dihapus'),
