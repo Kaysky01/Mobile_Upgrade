@@ -513,11 +513,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     }
 
     // CEK LOGIN - Cek dari SharedPreferences dan Google Sign In
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedInSharedPrefs = prefs.getBool('isLoggedIn') ?? false;
-    final isLoggedInGoogle = _googleAuthService.isSignedIn();
-
-    final isLoggedIn = isLoggedInSharedPrefs || isLoggedInGoogle;
+  final prefs = await SharedPreferences.getInstance();
+final token = prefs.getString('token');
+    final isLoggedIn = token != null && token.isNotEmpty;
 
     if (!isLoggedIn) {
       // Jika belum login, tampilkan dialog konfirmasi
@@ -603,7 +601,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           );
 
           // Delay sebentar untuk UX
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 200));
 
           // Tutup loading
           if (mounted) Navigator.pop(context);
@@ -645,49 +643,41 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     final finalCategory =
         category == 'Lainnya' ? (customCategory ?? category) : category;
 
-    final newReport = ReportModel(
-      id: _reportService.getNextId(),
-      title: title,
-      description: description,
-      category: finalCategory,
-      status: 'Diproses',
-      date: dateStr,
-      imageCount: _mediaItems.length,
-    );
+  final success = await _reportService.createReport(
+  categoryId: _categories.indexOf(finalCategory) + 1,
+  title: finalCategory,
+  description: description,
+  location: cachedData['location'],
+);
 
-    _reportService.addReport(newReport);
+if (!success) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Gagal mengirim laporan'),
+      backgroundColor: Colors.red,
+    ),
+  );
+  return;
+}
 
-    // Clear cached report data
-    await _imageCacheService.clearReportData();
+// Clear cached report data
+await _imageCacheService.clearReportData();
 
-    // Konversi ReportModel ke Map untuk ReportDetailScreen
-    final reportMap = {
-      'id': newReport.id,
-      'title': newReport.title,
-      'description': newReport.description,
-      'category': newReport.category,
-      'status': newReport.status,
-      'date': newReport.date,
-      'imageCount': newReport.imageCount,
-    };
+// Notifikasi sukses
+ScaffoldMessenger.of(context).showSnackBar(
+  const SnackBar(
+    content: Text('✓ Laporan berhasil dikirim!'),
+    backgroundColor: Colors.green,
+    duration: Duration(seconds: 2),
+  ),
+);
 
-    // Tampilkan notifikasi sukses
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✓ Laporan berhasil dikirim!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    // LANGSUNG ke Detail Laporan
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ReportDetailScreen(report: reportMap),
-      ),
-    );
-  }
+// 🔁 Ke LIST laporan (ambil dari API)
+Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(builder: (_) => const ReportsScreen()),
+);
+}
 
   // Method terpisah untuk proses submit setelah login
   void _proceedWithSubmit() {
@@ -745,7 +735,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             child: const Text('Batal'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final now = DateTime.now();
               final months = [
                 'Januari',
@@ -768,38 +758,53 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   ? _customCategoryController.text
                   : _selectedCategory;
 
-              final newReport = ReportModel(
-                id: _reportService.getNextId(),
-                title: finalCategory,
-                description: _deskripsiController.text,
-                category: finalCategory,
-                status: 'Diproses',
-                date: dateStr,
-                imageCount: _mediaItems.length,
-              );
+              Navigator.pop(context); // tutup dialog
 
-              _reportService.addReport(newReport);
+showDialog(
+  context: context,
+  barrierDismissible: false,
+  builder: (_) => const Center(
+    child: CircularProgressIndicator(),
+  ),
+);
 
-              Navigator.pop(context);
 
-              // Konversi ReportModel ke Map untuk ReportDetailScreen
-              final reportMap = {
-                'id': newReport.id,
-                'title': newReport.title,
-                'description': newReport.description,
-                'category': newReport.category,
-                'status': newReport.status,
-                'date': newReport.date,
-                'imageCount': newReport.imageCount,
-              };
+final success = await _reportService.createReport(
+  categoryId: _categories.indexOf(finalCategory) + 1,
+  title: finalCategory,
+  description: _deskripsiController.text,
+  location: _lokasiController.text,
+);
+
+Navigator.pop(context); // tutup loading
+
+if (!success) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Gagal mengirim laporan'),
+      backgroundColor: Colors.red,
+    ),
+  );
+  return;
+}
+
+ScaffoldMessenger.of(context).showSnackBar(
+  const SnackBar(
+    content: Text('✓ Laporan berhasil dikirim'),
+    backgroundColor: Colors.green,
+    duration: Duration(seconds: 2),
+  ),
+);
+
+// 🔁 ke list laporan (API source of truth)
+Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(builder: (_) => const ReportsScreen()),
+);
+
 
               // Navigasi ke ReportDetailScreen dengan data laporan baru
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ReportDetailScreen(report: reportMap),
-                ),
-              );
+
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF1453A3),

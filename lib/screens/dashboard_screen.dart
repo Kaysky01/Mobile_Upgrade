@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pelaporan_akademik/services/auth_service.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
@@ -46,62 +47,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // Cek status login dan load user info
-  Future<void> _checkLoginStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+Future<void> _checkLoginStatus() async {
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('auth_token');
 
-    if (isLoggedIn) {
-      // Load data dari SharedPreferences
-      final userName = prefs.getString('userName');
-      final userEmail = prefs.getString('userEmail');
-      final userPhoto = prefs.getString('userPhoto');
-      final loginMethod = prefs.getString('loginMethod');
+  if (token != null && token.isNotEmpty) {
+    // Ambil data yang disimpan oleh AuthService saat login berhasil
+    final String userName = prefs.getString('user_name') ?? 'User';
+    final String userEmail = prefs.getString('user_email') ?? '';
+    final String? loginMethod = prefs.getString('login_method'); // Pastikan ini disimpan saat login
 
-      // Jika login dengan Google, coba silent sign in
-      if (loginMethod == 'google') {
-        await _googleAuthService.signInSilently();
-        final userInfo = _googleAuthService.getUserInfo();
-        if (userInfo != null) {
-          setState(() {
-            _userName = userInfo['displayName'] ?? userName ?? 'User Name';
-            _userEmail = userInfo['email'] ?? userEmail ?? 'user@example.com';
-            _userPhotoUrl = userInfo['photoUrl'] ?? userPhoto;
-          });
-          return;
-        }
+    if (loginMethod == 'google') {
+      // Jika login via google, coba refresh data google jika perlu
+      await _googleAuthService.signInSilently();
+      final userInfo = _googleAuthService.getUserInfo();
+      if (userInfo != null) {
+        setState(() {
+          _userName = userInfo['displayName'] ?? userName;
+          _userEmail = userInfo['email'] ?? userEmail;
+          _userPhotoUrl = userInfo['photoUrl'];
+        });
+        return;
       }
-
-      // Jika login dengan email atau Google gagal, gunakan data dari SharedPreferences
-      setState(() {
-        _userName = userName ?? 'User Name';
-        _userEmail = userEmail ?? 'user@example.com';
-        _userPhotoUrl = userPhoto;
-      });
-    } else {
-      // Jika belum login, tampilkan guest
-      setState(() {
-        _userName = 'Guest';
-        _userEmail = 'Silakan login untuk membuat laporan';
-        _userPhotoUrl = null;
-      });
     }
-  }
 
-  void _loadUserInfo() {
-    final userInfo = _googleAuthService.getUserInfo();
-    if (userInfo != null) {
-      setState(() {
-        _userName = userInfo['displayName'] ?? 'User Name';
-        _userEmail = userInfo['email'] ?? 'user@example.com';
-        _userPhotoUrl = userInfo['photoUrl']; // NEW: Load photo URL
-      });
-    } else {
-      setState(() {
-        _userName = 'Guest';
-        _userEmail = 'Silakan login untuk membuat laporan';
-      });
-    }
+    // Jika login via Email/Sanctum
+    setState(() {
+      _userName = userName;
+      _userEmail = userEmail;
+      _userPhotoUrl = null; // Email login biasanya tidak punya URL foto langsung dari API Laravel kecuali diset
+    });
+  } else {
+    // STATUS GUEST
+    setState(() {
+      _userName = 'Guest';
+      _userEmail = 'Silakan login untuk melapor';
+      _userPhotoUrl = null;
+    });
   }
+}
 
   // Memuat foto profil yang tersimpan
   Future<void> _loadProfilePhoto() async {
@@ -417,29 +401,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _openCreateReport() {
-    if (_capturedMediaFile != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const CreateReportScreen(),
-        ),
-      ).then((_) {
-        // Clear captured media setelah kembali dari create report
-        setState(() {
-          _capturedMediaFile = null;
-          _isMediaVideo = false;
-          _videoPreviewController?.dispose();
-          _videoPreviewController = null;
-        });
-        _loadUserInfo();
-        _loadProfilePhoto();
+  // Cari baris 251 di dashboard_screen.dart Anda dan ganti dengan ini:
+
+void _openCreateReport() async {
+
+  // 3. JIKA SUDAH LOGIN, barulah jalankan logika buka form laporan
+  if (_capturedMediaFile != null) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const CreateReportScreen(),
+      ),
+    ).then((_) {
+      // Bersihkan media setelah kembali dari layar laporan
+      setState(() {
+        _capturedMediaFile = null;
+        _isMediaVideo = false;
+        _videoPreviewController?.dispose();
+        _videoPreviewController = null;
       });
-    } else {
-      // Jika belum ada media, buka dialog pilihan
-      _handleCreateReport();
-    }
+      _checkLoginStatus();
+      _loadProfilePhoto();
+    });
+  } else {
+    // Jika belum ada foto/video yang diambil, buka pilihan kamera/galeri
+    _handleCreateReport();
   }
+}
 
   @override
   void dispose() {
@@ -447,61 +435,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  void _showLogoutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Logout'),
-        content: const Text('Apakah Anda yakin ingin keluar?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context); // Tutup dialog
+ void _showLogoutDialog() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Konfirmasi Logout'),
+      content: const Text('Apakah Anda yakin ingin keluar?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            Navigator.pop(context);
+            
+            // Gunakan AuthService agar sinkron
+            final authService = AuthService();
+            await authService.logout();
 
-              // Sign out dari Google
-              await _googleAuthService.signOut();
+            if (mounted) {
+              setState(() {
+                _userName = 'Guest';
+                _userEmail = 'Silakan login untuk melapor';
+                _userPhotoUrl = null;
+                _profilePhotoPath = null;
+              });
 
-              // Hapus data login dari SharedPreferences
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('isLoggedIn', false);
-              await prefs.remove('userEmail');
-              await prefs.remove('userName');
-              await prefs.remove('userPhoto');
-              await prefs.remove('loginMethod');
-
-              if (mounted) {
-                // Setelah logout, tetap di dashboard sebagai guest
-                setState(() {
-                  _userName = 'Guest';
-                  _userEmail = 'Silakan login untuk membuat laporan';
-                  _userPhotoUrl = null;
-                  _profilePhotoPath = null;
-                });
-
-                // Tampilkan pesan logout sukses
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content:
-                        Text('Logout berhasil! Anda sekarang sebagai Guest'),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE74C3C),
-            ),
-            child: const Text('Logout', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Logout berhasil!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            }
+          },
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE74C3C)),
+          child: const Text('Logout', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -1556,7 +1531,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ).then((_) {
                       // Refresh user info setelah login
-                      _loadUserInfo();
+                      _checkLoginStatus();
                       _loadProfilePhoto();
                     });
                   },

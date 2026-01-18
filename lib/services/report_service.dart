@@ -1,97 +1,100 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/report_model.dart';
 
 class ReportService {
-  // Singleton pattern
-  static final ReportService _instance = ReportService._internal();
-  factory ReportService() => _instance;
-  ReportService._internal();
+  static const String baseUrl = 'http://192.168.100.24:8000/api/v1';
 
-  // Data laporan dummy
-  final List<ReportModel> _reports = [
-    ReportModel(
-      id: 1,
-      title: 'Plagiarisme Tugas Akhir',
-      description:
-          'Mahasiswa terindikasi melakukan plagiarisme pada tugas akhir dengan tingkat kesamaan 85% dari sumber online.',
-      category: 'Plagiarisme',
-      status: 'Disetujui',
-      date: '15 Januari 2025',
-      imageCount: 3,
-    ),
-    ReportModel(
-      id: 2,
-      title: 'Kecurangan Ujian Tengah Semester',
-      description:
-          'Mahasiswa kedapatan membawa contekan saat ujian tengah semester mata kuliah Pemrograman Web.',
-      category: 'Menyontek',
-      status: 'Diproses',
-      date: '12 Januari 2025',
-      imageCount: 2,
-    ),
-    ReportModel(
-      id: 3,
-      title: 'Titip Absen di Kelas',
-      description:
-          'Terlihat mahasiswa menitipkan absen kepada teman saat kuliah Basis Data padahal yang bersangkutan tidak hadir.',
-      category: 'Titip Absen',
-      status: 'Diproses',
-      date: '10 Januari 2025',
-      imageCount: 1,
-    ),
-    ReportModel(
-      id: 4,
-      title: 'Pemalsuan Tanda Tangan Dosen',
-      description:
-          'Mahasiswa memalsukan tanda tangan dosen pembimbing pada form persetujuan proposal skripsi.',
-      category: 'Pemalsuan Data',
-      status: 'Ditolak',
-      date: '8 Januari 2025',
-      imageCount: 0,
-    ),
-    ReportModel(
-      id: 5,
-      title: 'Kerjasama Tidak Sah pada Ujian',
-      description:
-          'Beberapa mahasiswa bekerja sama dalam mengerjakan soal ujian akhir semester.',
-      category: 'Kecurangan Ujian',
-      status: 'Disetujui',
-      date: '5 Januari 2025',
-      imageCount: 4,
-    ),
-  ];
+  List<ReportModel>? get allReports => null;
 
-  // Get all reports
-  List<ReportModel> getAllReports() {
-    return List.from(_reports);
+  // =========================
+  // GET TOKEN
+  // =========================
+  Future<String?> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
   }
 
-  // Get report by id
-  ReportModel? getReportById(int id) {
-    try {
-      return _reports.firstWhere((report) => report.id == id);
-    } catch (e) {
-      return null;
+  // =========================
+  // GET ALL REPORTS (USER)
+  // =========================
+  Future<List<ReportModel>> getAllReports() async {
+    final token = await _getToken();
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/reports'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final List jsonData =
+          jsonDecode(response.body)['data'] as List;
+
+      return jsonData
+          .map((item) => ReportModel.fromApi(item))
+          .toList();
+    } else {
+      throw Exception('Gagal mengambil laporan');
     }
   }
 
-  // Add new report
-  void addReport(ReportModel report) {
-    _reports.insert(0, report);
+  // =========================
+  // GET DETAIL REPORT
+  // =========================
+  Future<ReportModel> getReportById(int id) async {
+    final token = await _getToken();
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/reports/$id'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return ReportModel.fromApi(
+        jsonDecode(response.body)['data'],
+      );
+    } else {
+      throw Exception('Gagal mengambil detail laporan');
+    }
   }
 
-  // Get next ID
-  int getNextId() {
-    if (_reports.isEmpty) return 1;
-    return _reports.map((r) => r.id).reduce((a, b) => a > b ? a : b) + 1;
-  }
+  // =========================
+  // CREATE REPORT
+  // =========================
+Future<bool> createReport({
+  required int categoryId,
+  required String title,
+  required String description,
+  String? location,
+}) async {
+  final token = await _getToken();
 
-  // Get reports by status
-  List<ReportModel> getReportsByStatus(String status) {
-    return _reports.where((report) => report.status == status).toList();
-  }
+  final response = await http.post(
+    Uri.parse('$baseUrl/reports'),
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': 'Bearer $token',
+    },
+    body: {
+      'category_id': categoryId.toString(),
+      'title': title,
+      'description': description,
+      if (location != null) 'location': location,
+    },
+  );
+print('➡️ FLUTTER HIT API: $baseUrl/reports');
+print('➡️ TOKEN: $token');
+print('⬅️ STATUS: ${response.statusCode}');
+print('⬅️ BODY: ${response.body}');
 
-  // Delete report
-  void deleteReport(int id) {
-    _reports.removeWhere((report) => report.id == id);
-  }
+  return response.statusCode == 201;
+}
+
 }

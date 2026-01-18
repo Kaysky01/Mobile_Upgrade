@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'create_report_screen.dart';
 import 'forgot_password_screen.dart';
+import '../services/auth_service.dart';
 import '../services/google_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -22,6 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final AuthService _authService = AuthService();
+
 
   @override
   void initState() {
@@ -30,52 +33,71 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loginWithEmail() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email dan Password harus diisi!'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
+     print('LOGIN BUTTON DITEKAN');
+  if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Email dan Password harus diisi!'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
+  }
 
-    setState(() => _isLoading = true);
+  setState(() => _isLoading = true);
 
-    // Simulasi API call
-    await Future.delayed(const Duration(seconds: 2));
+  bool success = false;
 
-    // Simpan status login
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userEmail', _emailController.text);
-    await prefs.setString('userName', _emailController.text.split('@')[0]);
-    await prefs.setString('loginMethod', 'email');
-
-    setState(() => _isLoading = false);
-
+  try {
+    success = await _authService.loginWithEmail(
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
+    print('LOGIN RESULT: $success');
+  } catch (e) {
+    success = false;
+  } finally {
     if (mounted) {
-      // Tampilkan pesan sukses
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login berhasil! Selamat datang'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      // Cek apakah perlu redirect ke create report
-      if (widget.redirectToCreateReport) {
-        Navigator.pop(context, true);
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const CreateReportScreen()),
-        );
-      } else {
-        // Pop kembali ke screen sebelumnya (Dashboard)
-        Navigator.pop(context, true);
-      }
+      setState(() => _isLoading = false);
     }
   }
+
+  if (!mounted) return;
+
+  if (!success) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Login gagal. Email atau password salah'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
+  }
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Login berhasil!'),
+      backgroundColor: Colors.green,
+    ),
+    
+  );
+
+  // ❗ JANGAN POP + PUSH TANPA DELAY
+  await Future.delayed(const Duration(milliseconds: 300));
+
+  if (!mounted) return;
+
+  if (widget.redirectToCreateReport) {
+    Navigator.pop(context, true);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateReportScreen()),
+    );
+  } else {
+    Navigator.pop(context, true);
+  }
+}
+
 
   Future<void> _loginWithGoogle() async {
     setState(() => _isLoading = true);
@@ -86,12 +108,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (googleUser != null && mounted) {
         // Simpan status login
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('isLoggedIn', true);
-        await prefs.setString('userEmail', googleUser.email);
-        await prefs.setString('userName', googleUser.displayName ?? 'User');
-        await prefs.setString('userPhoto', googleUser.photoUrl ?? '');
-        await prefs.setString('loginMethod', 'google');
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

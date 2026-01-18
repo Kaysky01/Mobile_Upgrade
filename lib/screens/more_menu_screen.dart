@@ -10,6 +10,7 @@ import 'help_support_screen.dart';
 import 'news_screen.dart';
 import 'login_screen.dart';
 import '../services/google_auth_service.dart';
+import '../services/auth_service.dart'; // Tambahkan import ini
 
 class MoreMenuScreen extends StatefulWidget {
   const MoreMenuScreen({super.key});
@@ -21,6 +22,7 @@ class MoreMenuScreen extends StatefulWidget {
 class _MoreMenuScreenState extends State<MoreMenuScreen> {
   int _selectedIndex = 3;
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final AuthService _authService = AuthService(); // Inisialisasi AuthService
 
   String _userName = 'User Name';
   String _userEmail = 'user@example.com';
@@ -36,16 +38,15 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
 
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    // PERBAIKAN: Cek auth_token sesuai standar AuthService kita
+    final token = prefs.getString('auth_token');
 
-    if (isLoggedIn) {
-      // Load dari SharedPreferences dulu
-      final userName = prefs.getString('userName');
-      final userEmail = prefs.getString('userEmail');
-      final userPhoto = prefs.getString('userPhoto');
-      final loginMethod = prefs.getString('loginMethod');
+    if (token != null && token.isNotEmpty) {
+      // Ambil data dengan key yang sinkron dengan AuthService
+      final userName = prefs.getString('user_name');
+      final userEmail = prefs.getString('user_email');
+      final loginMethod = prefs.getString('login_method');
 
-      // Jika login dengan Google, coba silent sign in
       if (loginMethod == 'google') {
         await _googleAuthService.signInSilently();
         final userInfo = _googleAuthService.getUserInfo();
@@ -53,17 +54,16 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
           setState(() {
             _userName = userInfo['displayName'] ?? userName ?? 'User Name';
             _userEmail = userInfo['email'] ?? userEmail ?? 'user@example.com';
-            _userPhotoUrl = userInfo['photoUrl'] ?? userPhoto;
+            _userPhotoUrl = userInfo['photoUrl'];
           });
           return;
         }
       }
 
-      // Gunakan data dari SharedPreferences
       setState(() {
         _userName = userName ?? 'User Name';
         _userEmail = userEmail ?? 'user@example.com';
-        _userPhotoUrl = userPhoto;
+        _userPhotoUrl = null; 
       });
     } else {
       setState(() {
@@ -78,12 +78,9 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
     await _checkLoginStatus();
   }
 
-  // Method untuk cek apakah user sudah login (dari SharedPreferences atau Google)
   Future<bool> _isUserLoggedIn() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedInSharedPrefs = prefs.getBool('isLoggedIn') ?? false;
-    final isLoggedInGoogle = _googleAuthService.isSignedIn();
-    return isLoggedInSharedPrefs || isLoggedInGoogle;
+    // Gunakan fungsi isLoggedIn dari AuthService yang sudah kita buat sebelumnya
+    return await _authService.isLoggedIn();
   }
 
   Future<void> _loadProfilePhoto() async {
@@ -103,19 +100,15 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
     final isLoggedIn = await _isUserLoggedIn();
 
     if (!isLoggedIn) {
-      // METODE 2: User login dulu sebelum membuat laporan
-      // Langsung navigate ke LoginScreen
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       ).then((_) {
-        // Setelah kembali dari login, refresh data user
-        setState(() {});
-        _loadUserInfo();
+        // Refresh data setelah kembali dari login
+        _checkLoginStatus();
         _loadProfilePhoto();
       });
     } else {
-      // Jika sudah login, tampilkan konfirmasi logout
       _showLogoutConfirmation();
     }
   }
@@ -133,26 +126,21 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              // Sign out dari Google
-              await _googleAuthService.signOut();
-
-              // Hapus data login dari SharedPreferences
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('isLoggedIn', false);
-              await prefs.remove('userEmail');
-              await prefs.remove('userName');
-              await prefs.remove('userPhoto');
-              await prefs.remove('loginMethod');
+              // Gunakan fungsi logout global dari AuthService agar semua key dihapus bersih
+              await _authService.logout();
 
               if (mounted) {
-                Navigator.pop(context); // Tutup dialog
-                // Tetap di more menu, hanya refresh data
+                Navigator.pop(context);
                 setState(() {
                   _userName = 'Guest';
                   _userEmail = 'Silakan login untuk akses penuh';
                   _userPhotoUrl = null;
                   _profilePhotoPath = null;
                 });
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Berhasil keluar'), backgroundColor: Colors.green),
+                );
               }
             },
             style: ElevatedButton.styleFrom(
@@ -167,6 +155,7 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Bagian Build tetap sama persis sesuai UI yang Anda kirim sebelumnya
     return Scaffold(
       backgroundColor: const Color(0xFF1453A3),
       body: SafeArea(
@@ -409,7 +398,7 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
                             Icon(
                               Icons.arrow_forward_ios,
                               size: 18,
-                              color: _googleAuthService.isSignedIn()
+                              color: _userName != 'Guest'
                                   ? const Color(0xFFE74C3C).withOpacity(0.5)
                                   : const Color(0xFF1453A3).withOpacity(0.5),
                             ),
@@ -428,6 +417,7 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
     );
   }
 
+  // Widget Helper tetap sama
   Widget _buildMenuCard({
     required IconData icon,
     required String title,
@@ -510,65 +500,21 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
         currentIndex: _selectedIndex,
         onTap: (index) {
           if (_selectedIndex == index) return;
-
-          setState(() {
-            _selectedIndex = index;
-          });
-
+          setState(() => _selectedIndex = index);
           switch (index) {
-            case 0:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const DashboardScreen()),
-              );
-              break;
-            case 1:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const ReportsScreen()),
-              );
-              break;
-            case 2:
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const NotificationsScreen()),
-              );
-              break;
-            case 3:
-              // Sudah di More Menu
-              break;
+            case 0: Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardScreen())); break;
+            case 1: Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ReportsScreen())); break;
+            case 2: Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())); break;
           }
         },
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        elevation: 0,
         selectedItemColor: const Color(0xFF1453A3),
         unselectedItemColor: Colors.grey,
-        selectedFontSize: 12,
-        unselectedFontSize: 12,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Beranda',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.file_copy_outlined),
-            activeIcon: Icon(Icons.file_copy),
-            label: 'Laporan',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications_outlined),
-            activeIcon: Icon(Icons.notifications),
-            label: 'Notifikasi',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.menu),
-            activeIcon: Icon(Icons.menu),
-            label: 'Lainnya',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Beranda'),
+          BottomNavigationBarItem(icon: Icon(Icons.file_copy_outlined), activeIcon: Icon(Icons.file_copy), label: 'Laporan'),
+          BottomNavigationBarItem(icon: Icon(Icons.notifications_outlined), activeIcon: Icon(Icons.notifications), label: 'Notifikasi'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu), activeIcon: Icon(Icons.menu), label: 'Lainnya'),
         ],
       ),
     );

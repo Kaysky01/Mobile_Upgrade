@@ -4,220 +4,164 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Base URL untuk Laravel backend
-  static String get baseUrl {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000/api'; // Android Emulator
-    } else if (Platform.isIOS) {
-      return 'http://localhost:8000/api'; // iOS Simulator
-    } else {
-      return 'http://192.168.1.100:8000/api'; // Real Device
-    }
-  }
+  // ================= BASE URL =================
+  static const String baseUrl = 'https://pelaporanakademik.com/api/v1';
 
-  Future<String?> _getToken() async {
+  // ================= SHARED PREF =================
+  Future<void> saveUser(Map<String, dynamic> user) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('api_token');
+    await prefs.setInt('user_id', user['id']);
+    await prefs.setString('user_name', user['name']);
+    await prefs.setString('user_email', user['email']);
   }
 
-  Future<void> _saveToken(String token) async {
+  Future<int?> getUserId() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('api_token', token);
+    return prefs.getInt('user_id');
   }
 
-  Future<void> _removeToken() async {
+  Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('api_token');
+    await prefs.clear();
   }
 
-  // Auth - Login
-  Future<Map<String, dynamic>> login(String email, String password) async {
+  // ================= AUTH (LOGIN / REGISTER) =================
+  /// BACKEND: POST /api/v1/user/auth
+  Future<Map<String, dynamic>> authUser({
+    required String name,
+    required String email,
+    String? googleId,
+  }) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/login'),
+      Uri.parse('$baseUrl/user/auth'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode({
+        'name': name,
+        'email': email,
+        if (googleId != null) 'google_id': googleId,
+      }),
     );
 
     final data = jsonDecode(response.body);
 
-    if (response.statusCode == 200 && data['success']) {
-      await _saveToken(data['data']['token']);
-      return data;
+    if (response.statusCode == 200 && data['success'] == true) {
+      await saveUser(data['data']);
+      return data['data'];
     } else {
-      throw Exception(data['message'] ?? 'Login gagal');
+      throw Exception(data['message'] ?? 'Auth gagal');
     }
   }
 
-  // Auth - Register
-  Future<Map<String, dynamic>> register(String name, String email, String password) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': name,
-          'email': email,
-          'password': password,
-        }),
-      );
+  // ================= CATEGORIES =================
+  /// GET /api/v1/categories
+  Future<List<dynamic>> getCategories() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/categories'),
+    );
 
-      final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body);
 
-      if (response.statusCode == 201 && data['success']) {
-        await _saveToken(data['data']['token']);
-        return data;
-      } else {
-        throw Exception(data['message'] ?? 'Registrasi gagal');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data['data'];
+    } else {
+      throw Exception('Gagal mengambil kategori');
     }
   }
 
-  // Auth - Logout
-  Future<void> logout() async {
-    try {
-      final token = await _getToken();
-      
-      await http.post(
-        Uri.parse('$baseUrl/logout'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      await _removeToken();
-    } catch (e) {
-      await _removeToken(); // Remove token even if request fails
-    }
-  }
-
-  // Reports - Get All
-  Future<List<dynamic>> getReports({String? status, String? category, String? search}) async {
-    try {
-      final token = await _getToken();
-      
-      var url = '$baseUrl/reports?';
-      if (status != null) url += 'status=$status&';
-      if (category != null) url += 'category=$category&';
-      if (search != null) url += 'search=$search&';
-
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['success']) {
-        return data['data']['data']; // Paginated data
-      } else {
-        throw Exception('Gagal mengambil data laporan');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
-
-  // Reports - Create
-  Future<Map<String, dynamic>> createReport({
+  // ================= CREATE REPORT =================
+  /// POST /api/v1/reports
+  Future<void> createReport({
+    required int categoryId,
     required String title,
     required String description,
-    required String category,
-    String? reporterName,
-    String? reporterEmail,
-    List<File>? images,
+    String? location,
+    List<File>? mediaFiles,
   }) async {
-    try {
-      final token = await _getToken();
-      
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/reports'),
-      );
+    final userId = await getUserId();
 
-      request.headers['Authorization'] = 'Bearer $token';
-      request.fields['title'] = title;
-      request.fields['description'] = description;
-      request.fields['category'] = category;
-      if (reporterName != null) request.fields['reporter_name'] = reporterName;
-      if (reporterEmail != null) request.fields['reporter_email'] = reporterEmail;
+    if (userId == null) {
+      throw Exception('User belum login');
+    }
 
-      // Add images
-      if (images != null) {
-        for (var image in images) {
-          request.files.add(await http.MultipartFile.fromPath(
-            'images[]',
-            image.path,
-          ));
-        }
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/reports'),
+    );
+
+    request.fields['user_id'] = userId.toString();
+    request.fields['category_id'] = categoryId.toString();
+    request.fields['title'] = title;
+    request.fields['description'] = description;
+    if (location != null) {
+      request.fields['location'] = location;
+    }
+
+    if (mediaFiles != null) {
+      for (final file in mediaFiles) {
+        request.files.add(
+          await http.MultipartFile.fromPath('media[]', file.path),
+        );
       }
+    }
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-      final data = jsonDecode(response.body);
+    final response = await request.send();
 
-      if (response.statusCode == 201 && data['success']) {
-        return data;
-      } else {
-        throw Exception(data['message'] ?? 'Gagal membuat laporan');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Gagal mengirim laporan');
     }
   }
 
-  // Reports - Get Statistics
+  // ================= USER REPORTS =================
+  /// GET /api/v1/reports/user/{userId}
+  Future<List<dynamic>> getUserReports() async {
+    final userId = await getUserId();
+
+    if (userId == null) {
+      return [];
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/reports/user/$userId'),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data['data'];
+    } else {
+      throw Exception('Gagal mengambil laporan');
+    }
+  }
+
+  // ================= REPORT DETAIL =================
+  /// GET /api/v1/reports/{id}
+  Future<Map<String, dynamic>> getReportDetail(int reportId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/reports/$reportId'),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data['data'];
+    } else {
+      throw Exception('Gagal mengambil detail laporan');
+    }
+  }
+
+  // ================= STATISTICS =================
+  /// GET /api/v1/statistics
   Future<Map<String, dynamic>> getStatistics() async {
-    try {
-      final token = await _getToken();
-      
-      final response = await http.get(
-        Uri.parse('$baseUrl/reports/statistics'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
+    final response = await http.get(
+      Uri.parse('$baseUrl/statistics'),
+    );
 
-      final data = jsonDecode(response.body);
+    final data = jsonDecode(response.body);
 
-      if (response.statusCode == 200 && data['success']) {
-        return data['data'];
-      } else {
-        throw Exception('Gagal mengambil statistik');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
-    }
-  }
-
-  // Notifications - Get All
-  Future<List<dynamic>> getNotifications() async {
-    try {
-      final token = await _getToken();
-      
-      final response = await http.get(
-        Uri.parse('$baseUrl/notifications'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && data['success']) {
-        return data['data']['data'];
-      } else {
-        throw Exception('Gagal mengambil notifikasi');
-      }
-    } catch (e) {
-      throw Exception('Error: $e');
+    if (response.statusCode == 200 && data['success'] == true) {
+      return data['data'];
+    } else {
+      throw Exception('Gagal mengambil statistik');
     }
   }
 }

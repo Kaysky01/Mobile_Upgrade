@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dashboard_screen.dart';
+import 'dashboard_screen.dart'; // Pastikan import ini benar
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -21,19 +21,16 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // 1. Controller Utama (Durasi 2 Detik untuk Intro)
     _mainController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     );
 
-    // 2. Controller Pulse (Looping halus untuk Logo)
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    // Animasi Fade In (Global)
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _mainController,
@@ -41,16 +38,13 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
 
-    // Animasi Scale (Logo muncul membal sedikit)
     _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _mainController,
-        curve:
-            const Interval(0.0, 0.6, curve: Curves.elasticOut), // Efek elastic
+        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
       ),
     );
 
-    // Animasi Slide (Teks naik dari bawah)
     _slideAnimation = Tween<double>(begin: 50.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _mainController,
@@ -61,22 +55,22 @@ class _SplashScreenState extends State<SplashScreen>
     _startAnimation();
   }
 
+  // --- LOGIC NAVIGASI LANGSUNG KE DASHBOARD ---
   void _startAnimation() async {
-    // Delay sebentar sebelum animasi mulai (supaya UI siap render)
     await Future.delayed(const Duration(milliseconds: 100));
     _mainController.forward();
 
-    // Total waktu tunggu Splash Screen: 1 Detik
-    await Future.delayed(const Duration(seconds: 1));
+    // Tunggu animasi logo selesai agar branding terasa
+    await Future.delayed(const Duration(milliseconds: 2800));
 
     if (mounted) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
+          // LANGSUNG KE DASHBOARD (Guest Mode)
           pageBuilder: (context, animation, secondaryAnimation) =>
               const DashboardScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            // Transisi CrossFade halus ke halaman Dashboard
             return FadeTransition(opacity: animation, child: child);
           },
           transitionDuration: const Duration(milliseconds: 800),
@@ -102,12 +96,11 @@ class _SplashScreenState extends State<SplashScreen>
         width: double.infinity,
         height: double.infinity,
         decoration: const BoxDecoration(
-          // Gradient Polinela (Biru Tua ke Biru Terang)
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF0D47A1), // Lebih gelap sedikit untuk kesan premium
+              Color(0xFF0D47A1),
               Color(0xFF1976D2),
               Color(0xFF42A5F5),
             ],
@@ -115,7 +108,6 @@ class _SplashScreenState extends State<SplashScreen>
         ),
         child: Stack(
           children: [
-            // --- BACKGROUND DECORATION (Elemen Visual) ---
             Positioned(
               top: -screenHeight * 0.1,
               right: -screenWidth * 0.1,
@@ -126,8 +118,6 @@ class _SplashScreenState extends State<SplashScreen>
               left: -screenWidth * 0.1,
               child: _buildCircleDeco(screenWidth * 0.4),
             ),
-
-            // --- MAIN CONTENT ---
             Center(
               child: AnimatedBuilder(
                 animation: _mainController,
@@ -135,19 +125,16 @@ class _SplashScreenState extends State<SplashScreen>
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // 1. LOGO AREA
                       ScaleTransition(
                         scale: _scaleAnimation,
                         child: ScaleTransition(
                           scale: Tween(begin: 1.0, end: 1.03).animate(
-                              // Pulse effect yang sangat halus
                               CurvedAnimation(
                                   parent: _pulseController,
                                   curve: Curves.easeInOut)),
                           child: Container(
                             padding: const EdgeInsets.all(15),
-                            width:
-                                screenWidth * 0.30, // Ukuran ideal (30% layar)
+                            width: screenWidth * 0.30,
                             height: screenWidth * 0.30,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
@@ -163,7 +150,6 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(8.0),
-                              // Pastikan file logo_polinela.png ada di assets!
                               child: Image.asset(
                                 'assets/images/logo.png',
                                 fit: BoxFit.contain,
@@ -178,10 +164,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                         ),
                       ),
-
                       SizedBox(height: screenHeight * 0.06),
-
-                      // 2. TEKS JUDUL & SUBJUDUL
                       Transform.translate(
                         offset: Offset(0, _slideAnimation.value),
                         child: FadeTransition(
@@ -219,10 +202,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                         ),
                       ),
-
                       SizedBox(height: screenHeight * 0.1),
-
-                      // 3. LOADING INDICATOR
                       FadeTransition(
                         opacity: _fadeAnimation,
                         child: const SizedBox(
@@ -239,8 +219,6 @@ class _SplashScreenState extends State<SplashScreen>
                 },
               ),
             ),
-
-            // --- FOOTER ---
             Positioned(
               bottom: 30,
               left: 0,

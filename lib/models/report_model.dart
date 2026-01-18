@@ -14,53 +14,25 @@ class ReportModel {
     required this.category,
     required this.status,
     required this.date,
-    this.imageCount = 0,
+    required this.imageCount,
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'title': title,
-      'description': description,
-      'category': category,
-      'status': status,
-      'date': date,
-      'imageCount': imageCount,
-    };
+  // 🔥 DARI API LARAVEL
+  factory ReportModel.fromApi(Map<String, dynamic> json) {
+    return ReportModel(
+      id: json['id'],
+      title: json['title'] ?? '',
+      description: json['description'] ?? '',
+      category: json['category'] != null
+          ? json['category']['name']
+          : '-',
+      status: json['status'] ?? 'Diproses',
+      date: json['created_at'] ?? '',
+      imageCount: json['media'] != null
+          ? (json['media'] as List).length
+          : 0,
+    );
   }
-}
 
-// Enum untuk statistik
-enum ReportStatus {
-  approved,
-  processing,
-  pending,
-  rejected
-}
-
-// Model untuk statistik
-class MonthlyReportData {
-  final String month;
-  final int count;
-  final List<Map<String, dynamic>> reports;
-
-  MonthlyReportData({
-    required this.month,
-    required this.count,
-    required this.reports,
-  });
-}
-
-class CategoryData {
-  final String category;
-  final int count;
-  final double percentage;
-  final List<Map<String, dynamic>> reports;
-
-  CategoryData({
-    required this.category,
-    required this.count,
-    required this.percentage,
-    required this.reports,
-  });
+  static fromJson(json) {}
 }
