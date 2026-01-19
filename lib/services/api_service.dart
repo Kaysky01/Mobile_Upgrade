@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // ================= BASE URL =================
-  static const String baseUrl = 'https://pelaporanakademik.com/api/v1';
+  static const String baseUrl = 'http://192.168.100.24:8000/api/v1';
 
   // ================= SHARED PREF =================
   Future<void> saveUser(Map<String, dynamic> user) async {

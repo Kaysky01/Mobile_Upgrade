@@ -2,23 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/splash_screen.dart';
 
+// 🔥 GLOBAL NAVIGATOR KEY
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
-  // 1. Inisialisasi binding agar SharedPreferences bisa diakses nantinya
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 2. Styling System UI
+
+  // System UI
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  
+
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  
+
+  // ✅ SATU-SATUNYA YANG BOLEH DI main()
   runApp(const MyApp());
 }
 
@@ -28,7 +31,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // 🔥 INI KUNCI UTAMA
+      navigatorKey: navigatorKey,
+
       title: 'Academic Report',
+      debugShowCheckedModeBanner: false,
+
       theme: ThemeData(
         primaryColor: const Color(0xFF1453A3),
         colorScheme: ColorScheme.fromSeed(
@@ -38,9 +46,8 @@ class MyApp extends StatelessWidget {
         fontFamily: 'Roboto',
         useMaterial3: true,
       ),
-      // SplashScreen tetap sebagai pintu masuk untuk branding
+
       home: const SplashScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }

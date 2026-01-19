@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/report_model.dart';
@@ -66,35 +68,79 @@ class ReportService {
   }
 
   // =========================
-  // CREATE REPORT
+  // CREATE REPORT (UPDATED + MEDIA)
   // =========================
-Future<bool> createReport({
+  Future<bool> createReport({
   required int categoryId,
   required String title,
   required String description,
   String? location,
+  List<File>? mediaFiles,
 }) async {
-  final token = await _getToken();
+  try {
+    final token = await _getToken();
 
-  final response = await http.post(
-    Uri.parse('$baseUrl/reports'),
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': 'Bearer $token',
-    },
-    body: {
-      'category_id': categoryId.toString(),
-      'title': title,
-      'description': description,
-      if (location != null) 'location': location,
-    },
-  );
-print('➡️ FLUTTER HIT API: $baseUrl/reports');
-print('➡️ TOKEN: $token');
-print('⬅️ STATUS: ${response.statusCode}');
-print('⬅️ BODY: ${response.body}');
+    if (token == null || token.isEmpty) {
+      print('❌ Token tidak ditemukan');
+      return false;
+    }
 
-  return response.statusCode == 201;
+    final uri = Uri.parse('$baseUrl/reports');
+    final request = http.MultipartRequest('POST', uri);
+
+    request.headers['Authorization'] = 'Bearer $token';
+    request.headers['Accept'] = 'application/json';
+
+    // TEXT FIELDS
+    request.fields['category_id'] = categoryId.toString();
+    request.fields['title'] = title;
+    request.fields['description'] = description;
+    if (location != null) {
+      request.fields['location'] = location;
+    }
+
+    // FILES
+    if (mediaFiles != null && mediaFiles.isNotEmpty) {
+      for (var file in mediaFiles) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'media[]', // ⬅️ HARUS media[]
+            file.path,
+          ),
+        );
+      }
+    }
+
+    print('➡️ UPLOAD MEDIA COUNT: ${mediaFiles?.length ?? 0}');
+
+    // 🔴 TAMBAH TIMEOUT 30 DETIK
+    final response = await request.send().timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        print('⏱️ TIMEOUT: Request took too long (30s)');
+        throw TimeoutException('Upload timeout');
+      },
+    );
+    
+    // 🔴 TAMBAH TIMEOUT UNTUK BACA RESPONSE
+    final responseBody = await response.stream.bytesToString().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        print('⏱️ TIMEOUT: Reading response took too long (10s)');
+        throw TimeoutException('Response timeout');
+      },
+    );
+
+    print('⬅️ STATUS: ${response.statusCode}');
+    print('⬅️ BODY: $responseBody');
+
+    return response.statusCode == 201;
+  } on TimeoutException catch (e) {
+    print('❌ TIMEOUT ERROR: $e');
+    return false;
+  } catch (e) {
+    print('❌ CREATE REPORT ERROR: $e');
+    return false;
+  }
 }
-
 }

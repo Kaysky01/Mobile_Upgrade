@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class CategoryService {
-  static const baseUrl = 'http://10.0.2.2:8000/api/v1';
+  static const baseUrl = 'http://192.168.100.24:8000/api/v1';
 
   static Future<List<dynamic>> getCategories() async {
     final prefs = await SharedPreferences.getInstance();

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pelaporan_akademik/main.dart';
 import 'dart:io';
 import 'package:video_player/video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +18,7 @@ import '../services/image_cache_service.dart';
 import '../services/report_service.dart';
 import '../services/google_auth_service.dart';
 import '../models/report_model.dart';
-
+import 'package:pelaporan_akademik/main.dart';
 class CreateReportScreen extends StatefulWidget {
   const CreateReportScreen({super.key});
 
@@ -32,6 +35,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   DateTime? _selectedDate;
   bool _showCustomCategory = false;
   LatLng? _selectedLocationCoordinates;
+  bool _isSubmitting = false; // 🔴 TAMBAH STATE UNTUK TRACKING
 
   // Media files
   List<MediaItem> _mediaItems = [];
@@ -459,6 +463,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     );
   }
 
+  List<File> _getMediaFiles() {
+  return _mediaItems.map((item) => item.file).toList();
+}
+
+  void _resetSubmitting() {
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+    }
+  }
+
   void _submitReport() async {
     // Validasi
     if (_selectedCategory.isEmpty) {
@@ -514,7 +528,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
     // CEK LOGIN - Cek dari SharedPreferences dan Google Sign In
   final prefs = await SharedPreferences.getInstance();
-final token = prefs.getString('token');
+final token = prefs.getString('auth_token');
+;
     final isLoggedIn = token != null && token.isNotEmpty;
 
     if (!isLoggedIn) {
@@ -592,26 +607,38 @@ final token = prefs.getString('token');
         // Jika login berhasil, langsung submit dan navigate ke detail
         if (loginSuccess == true && mounted) {
           // Tampilkan loading
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-          );
+BuildContext? loginLoadingContext;
 
-          // Delay sebentar untuk UX
-          await Future.delayed(const Duration(milliseconds: 200));
+showDialog(
+  context: context,
+  barrierDismissible: false,
+  builder: (ctx) {
+    loginLoadingContext = ctx;
+    return const Center(
+      child: CircularProgressIndicator(color: Colors.white),
+    );
+  },
+);
 
-          // Tutup loading
-          if (mounted) Navigator.pop(context);
+// Delay UX
+await Future.delayed(const Duration(milliseconds: 200));
+
+// Tutup loading dengan CONTEXT DIALOG
+if (loginLoadingContext != null) {
+  Navigator.of(loginLoadingContext!).pop();
+}
 
           // Auto submit dan navigate ke detail
           await _autoSubmitAfterLogin();
+
+  
+
         }
+        
       }
       return;
     }
+    
 
     // Jika sudah login, lanjutkan submit
     _proceedWithSubmit();
@@ -642,12 +669,14 @@ final token = prefs.getString('token');
     // Get final category (gunakan custom jika "Lainnya")
     final finalCategory =
         category == 'Lainnya' ? (customCategory ?? category) : category;
+if (!mounted) return;
 
-  final success = await _reportService.createReport(
+final success = await _reportService.createReport(
   categoryId: _categories.indexOf(finalCategory) + 1,
   title: finalCategory,
   description: description,
   location: cachedData['location'],
+  mediaFiles: _getMediaFiles(), // ✅ WAJIB
 );
 
 if (!success) {
@@ -664,34 +693,34 @@ if (!success) {
 await _imageCacheService.clearReportData();
 
 // Notifikasi sukses
-ScaffoldMessenger.of(context).showSnackBar(
+final messenger = ScaffoldMessenger.maybeOf(context);
+messenger?.showSnackBar(
   const SnackBar(
     content: Text('✓ Laporan berhasil dikirim!'),
     backgroundColor: Colors.green,
-    duration: Duration(seconds: 2),
   ),
 );
 
+
 // 🔁 Ke LIST laporan (ambil dari API)
-Navigator.pushReplacement(
-  context,
+navigatorKey.currentState?.pushReplacement(
   MaterialPageRoute(builder: (_) => const ReportsScreen()),
 );
+
 }
 
   // Method terpisah untuk proses submit setelah login
-  void _proceedWithSubmit() {
-    final photoCount =
-        _mediaItems.where((m) => m.type == MediaType.image).length;
-    final videoCount =
-        _mediaItems.where((m) => m.type == MediaType.video).length;
+void _proceedWithSubmit() {
+  final photoCount = _mediaItems.where((m) => m.type == MediaType.image).length;
+  final videoCount = _mediaItems.where((m) => m.type == MediaType.video).length;
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
+  // Tampilkan Dialog Konfirmasi (Gunakan context lokal tidak masalah disini)
+  showDialog(
+    context: context,
+    builder: (dialogContext) { // Kita namakan dialogContext
+      return AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Konfirmasi',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Konfirmasi', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,117 +733,92 @@ Navigator.pushReplacement(
                 color: Colors.grey[100],
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.photo,
-                          size: 16, color: Color(0xFF1453A3)),
-                      const SizedBox(width: 8),
-                      Text('$photoCount Foto'),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.videocam,
-                          size: 16, color: Color(0xFFE74C3C)),
-                      const SizedBox(width: 8),
-                      Text('$videoCount Video'),
-                    ],
-                  ),
-                ],
-              ),
+              child: Text('$photoCount Foto, $videoCount Video'),
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext), // Tutup dialog konfirmasi
             child: const Text('Batal'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              final now = DateTime.now();
-              final months = [
-                'Januari',
-                'Februari',
-                'Maret',
-                'April',
-                'Mei',
-                'Juni',
-                'Juli',
-                'Agustus',
-                'September',
-                'Oktober',
-                'November',
-                'Desember'
-              ];
-              final dateStr = '${now.day} ${months[now.month - 1]} ${now.year}';
-
-              // Get final category (gunakan custom jika "Lainnya")
-              final finalCategory = _selectedCategory == 'Lainnya'
-                  ? _customCategoryController.text
-                  : _selectedCategory;
-
-              Navigator.pop(context); // tutup dialog
-
-showDialog(
-  context: context,
-  barrierDismissible: false,
-  builder: (_) => const Center(
-    child: CircularProgressIndicator(),
-  ),
-);
-
-
-final success = await _reportService.createReport(
-  categoryId: _categories.indexOf(finalCategory) + 1,
-  title: finalCategory,
-  description: _deskripsiController.text,
-  location: _lokasiController.text,
-);
-
-Navigator.pop(context); // tutup loading
-
-if (!success) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Gagal mengirim laporan'),
-      backgroundColor: Colors.red,
-    ),
-  );
-  return;
-}
-
-ScaffoldMessenger.of(context).showSnackBar(
-  const SnackBar(
-    content: Text('✓ Laporan berhasil dikirim'),
-    backgroundColor: Colors.green,
-    duration: Duration(seconds: 2),
-  ),
-);
-
-// 🔁 ke list laporan (API source of truth)
-Navigator.pushReplacement(
-  context,
-  MaterialPageRoute(builder: (_) => const ReportsScreen()),
-);
-
-
-              // Navigasi ke ReportDetailScreen dengan data laporan baru
-
-            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF1453A3),
             ),
             child: const Text('Kirim', style: TextStyle(color: Colors.white)),
+            onPressed: () async {
+              // 1️⃣ TUTUP DIALOG KONFIRMASI
+              Navigator.pop(dialogContext);
+
+              // 2️⃣ TAMPILKAN LOADING (Gunakan navigatorKey!)
+              // Kita gunakan Global Key agar dialog menempel di root app, bukan di halaman ini
+              showDialog(
+                context: navigatorKey.currentContext!, 
+                barrierDismissible: false,
+                builder: (_) => const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              );
+
+              bool success = false;
+              String errorMessage = '';
+
+              try {
+                final finalCategory = _selectedCategory == 'Lainnya'
+                    ? _customCategoryController.text
+                    : _selectedCategory;
+
+                success = await _reportService.createReport(
+                  categoryId: _categories.indexOf(finalCategory) + 1,
+                  title: finalCategory,
+                  description: _deskripsiController.text,
+                  location: _lokasiController.text,
+                  mediaFiles: _getMediaFiles(),
+                );
+              } catch (e) {
+                errorMessage = e.toString();
+                print('❌ Error: $e');
+              } finally {
+                // 3️⃣ TUTUP LOADING (Gunakan navigatorKey!)
+                // Ini SANGAT AMAN. currentState?.pop() akan menutup dialog teratas (loading)
+                // tanpa peduli context halaman ini masih hidup atau tidak.
+                navigatorKey.currentState?.pop();
+              }
+
+              // 4️⃣ NAVIGASI & SNACKBAR
+              // Gunakan scaffoldMessenger lokal atau global (disini lokal aman karena await sudah lewat)
+              if (!mounted) return;
+
+              if (!success) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(errorMessage.isNotEmpty ? errorMessage : 'Gagal mengirim laporan'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✓ Laporan berhasil dikirim'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+
+                // Pindah Halaman menggunakan Global Key
+                navigatorKey.currentState?.pushReplacement(
+                  MaterialPageRoute(builder: (_) => const ReportsScreen()),
+                );
+              }
+            },
           ),
         ],
-      ),
-    );
-  }
+      );
+    },
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
