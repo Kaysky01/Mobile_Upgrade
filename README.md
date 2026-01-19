@@ -18,7 +18,7 @@ Aplikasi mobile untuk melaporkan pelanggaran akademik dengan sistem verifikasi a
 6. Firdaus Alfaridzi
 7. I Komang Artayasa
 8. M. Yunus naufal
-9. Naufal Zaky Syahputra 
+9. Naufal Zaky Syahputr
 
 ---
 
